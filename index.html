@@ -340,6 +340,7 @@
         let isOnlineGame = false;
         let currentLobbyId = null;
         let lobbyUnsubscribe = null;
+        let localPlayerAnimationTimeout = null;
 
         const colors = { red: "Rosso", pink: "Rosa", blue: "Blu", yellow: "Giallo", orange: "Arancione", lime: "Lime", darkgreen: "Verde Scuro", purple: "Viola", cyan: "Ciano", silver: "Argento", gold: "Oro", rainbow: "Arcobaleno", white: "Bianco", black: "Nero", "maroon": "Bordeaux", "navy": "Blu Scuro" };
         const colorKeys = Object.keys(colors);
@@ -351,17 +352,11 @@
         // --- INITIALIZATION ---
         
         async function initializeFirebase() {
-           // >>>>> INIZIO SEZIONE DA MODIFICARE <<<<<
-const userProvidedConfig = {
-    apiKey: "AIzaSyCylKpsbhvkOppxJoInXrP81gC2DOqq2Ao",
-    authDomain: "total-drama-judge.firebaseapp.com",
-    projectId: "total-drama-judge",
-    storageBucket: "total-drama-judge.firebasestorage.app",
-    messagingSenderId: "807046352867",
-    appId: "1:807046352867:web:a1c1849ad7b3cd19481ad6",
-    measurementId: "G-0BR32MRK92"
-};
-// >>>>> FINE SEZIONE DA MODIFICARE <<<<<
+            const userProvidedConfig = {
+                // apiKey: "...",
+                // authDomain: "...",
+                // projectId: "...",
+            };
 
             const firebaseConfig = typeof __firebase_config !== 'undefined' 
                 ? JSON.parse(__firebase_config) 
@@ -384,10 +379,8 @@ const userProvidedConfig = {
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
-                    console.log("Signed in with custom token.");
                 } else {
                     await signInAnonymously(auth);
-                    console.log("Signed in anonymously.");
                 }
             } catch (error) {
                 console.error("Authentication failed:", error);
@@ -405,13 +398,12 @@ const userProvidedConfig = {
         });
 
     function runAppLogic() {
-        // --- DOM ELEMENT GETTERS ---
         const mainMenu = document.getElementById('main-menu'), gameScreen = document.getElementById('game-screen'), gameModeSelect = document.getElementById('game-mode'), eliminationOptions = document.getElementById('elimination-options'), gemOptions = document.getElementById('gem-options'), playerCountInput = document.getElementById('player-count'), playerSetupContainer = document.getElementById('player-setup-container'), startGameBtn = document.getElementById('start-game-btn'), rulesBtn = document.getElementById('rules-btn'), gameBoard = document.getElementById('game-board'), turnIndicator = document.getElementById('turn-indicator'), leaderboardList = document.getElementById('leaderboard-list'), diceContainer = document.getElementById('dice-container'), dice1El = document.getElementById('dice1'), dice2El = document.getElementById('dice2'), menuButton = document.getElementById('menu-button'), menuModal = document.getElementById('menu-modal'), closeMenuBtn = document.getElementById('close-menu-btn'), returnToMenuBtn = document.getElementById('return-to-menu-btn'), confirmModal = document.getElementById('confirm-modal'), confirmYesBtn = document.getElementById('confirm-yes-btn'), confirmNoBtn = document.getElementById('confirm-no-btn'), winnerModal = document.getElementById('winner-modal'), podiumModal = document.getElementById('podium-modal'), podiumPlayAgainBtn = document.getElementById('podium-play-again-btn'), playAgainBtn = document.getElementById('play-again-btn'), rulesModal = document.getElementById('rules-modal'), closeRulesBtn = document.getElementById('close-rules-btn'), eliminationCounterEl = document.getElementById('elimination-counter'), eliminationMessageEl = document.getElementById('elimination-message'), tileExplanationEl = document.getElementById('tile-explanation-message'), graveyardEl = document.getElementById('eliminated-graveyard'), turnOrderIndicator = document.getElementById('turn-order-indicator'), inventoryBar = document.getElementById('inventory-bar'), gemChoiceModal = document.getElementById('gem-choice-modal'), gemChoiceOptions = document.getElementById('gem-choice-options'), classicRulesEl = document.getElementById('classic-rules'), gemRulesEl = document.getElementById('gem-rules');
         const onlineBtn = document.getElementById('online-btn'), onlineMenu = document.getElementById('online-menu'), backToMainMenuBtn = document.getElementById('back-to-main-menu-btn'), createLobbyBtn = document.getElementById('create-lobby-btn'), joinLobbyBtn = document.getElementById('join-lobby-btn'), lobbyCodeInput = document.getElementById('lobby-code-input'), lobbyScreen = document.getElementById('lobby-screen'), lobbyCodeDisplay = document.getElementById('lobby-code-display'), copyCodeBtn = document.getElementById('copy-code-btn'), lobbyPlayerList = document.getElementById('lobby-player-list'), hostControls = document.getElementById('host-controls'), playerControls = document.getElementById('player-controls'), startOnlineGameBtn = document.getElementById('start-online-game-btn'), leaveLobbyBtn = document.getElementById('leave-lobby-btn');
         
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-goose-game';
         
-        function initializeState() { state = { players: [], gameMode: 'classic', eliminationTurns: 3, gemsToCollect: 5, totalTiles: 80, currentPlayerIndex: 0, gameRounds: 0, isGameOver: false, isMoving: false, specialTiles: {}, gemLocations: {}, status: 'waiting', hostId: null, lastRoll: null }; }
+        function initializeState() { state = { players: [], gameMode: 'classic', eliminationTurns: 3, gemsToCollect: 5, totalTiles: 80, currentPlayerIndex: 0, gameRounds: 0, isGameOver: false, isMoving: false, specialTiles: {}, gemLocations: {}, status: 'waiting', hostId: null, lastRoll: null, diceResult: [0,0] }; }
 
         function setupPlayerInputs() {
             const count = parseInt(playerCountInput.value);
@@ -446,9 +438,8 @@ const userProvidedConfig = {
         playerCountInput.addEventListener('input', setupPlayerInputs);
         initializeState();
         setupPlayerInputs();
-        setupRulesModals(); // Setup rules initially
+        setupRulesModals();
 
-        // --- LOCAL GAME START ---
         startGameBtn.addEventListener('click', () => {
             isOnlineGame = false;
             initializeState();
@@ -463,7 +454,6 @@ const userProvidedConfig = {
             if (currentPlayer().type === 'cpu') setTimeout(playTurn, 1000);
         });
 
-        // --- ONLINE GAME FLOW ---
         onlineBtn.addEventListener('click', () => {
             mainMenu.classList.add('hidden');
             onlineMenu.classList.remove('hidden');
@@ -476,10 +466,7 @@ const userProvidedConfig = {
 
         createLobbyBtn.addEventListener('click', async () => {
             const user = auth.currentUser;
-            if (!user) {
-                alert("Autenticazione in corso, riprova tra un momento.");
-                return;
-            }
+            if (!user) { return; }
 
             const lobbyId = generateLobbyCode();
             currentLobbyId = lobbyId;
@@ -493,11 +480,7 @@ const userProvidedConfig = {
             state.totalTiles = (state.gameMode === 'fast') ? 40 : 80;
             
             const hostPlayer = {
-                uid: user.uid,
-                id: 0,
-                name: defaultNames[colorKeys[0]],
-                color: colorKeys[0],
-                type: 'human',
+                uid: user.uid, id: 0, name: defaultNames[colorKeys[0]], color: colorKeys[0], type: 'human',
                 position: 1, lap: 1, skippedTurns: 0, isEliminated: false, team: null, gems: []
             };
             state.players.push(hostPlayer);
@@ -516,41 +499,24 @@ const userProvidedConfig = {
 
         joinLobbyBtn.addEventListener('click', async () => {
             const user = auth.currentUser;
-            if (!user) {
-                alert("Autenticazione in corso, riprova tra un momento.");
-                return;
-            }
+            if (!user) { return; }
             const lobbyId = lobbyCodeInput.value.toUpperCase();
-            if (!lobbyId) {
-                alert("Inserisci un codice lobby.");
-                return;
-            }
+            if (!lobbyId) { alert("Inserisci un codice lobby."); return; }
 
             const lobbyRef = doc(db, `artifacts/${appId}/public/data/lobbies/${lobbyId}`);
             try {
                 await runTransaction(db, async (transaction) => {
                     const lobbyDoc = await transaction.get(lobbyRef);
-                    if (!lobbyDoc.exists()) {
-                        throw "Lobby non trovata!";
-                    }
+                    if (!lobbyDoc.exists()) { throw "Lobby non trovata!"; }
                     
                     const lobbyData = lobbyDoc.data();
-                    if (lobbyData.status !== 'waiting') {
-                        throw "La partita è già iniziata o terminata.";
-                    }
+                    if (lobbyData.status !== 'waiting') { throw "La partita è già iniziata o terminata."; }
 
-                    const playerUids = lobbyData.players.map(p => p.uid);
-                    if (playerUids.includes(user.uid)) {
-                         // Player is already in, just proceed
-                    } else {
+                    if (!lobbyData.players.some(p => p.uid === user.uid)) {
                         const newPlayerId = lobbyData.players.length;
                         const defaultColor = colorKeys[newPlayerId % colorKeys.length];
                         const newPlayer = {
-                            uid: user.uid,
-                            id: newPlayerId,
-                            name: defaultNames[defaultColor],
-                            color: defaultColor,
-                            type: 'human',
+                            uid: user.uid, id: newPlayerId, name: defaultNames[defaultColor], color: defaultColor, type: 'human',
                             position: 1, lap: 1, skippedTurns: 0, isEliminated: false, team: null, gems: []
                         };
                         lobbyData.players.push(newPlayer);
@@ -581,9 +547,7 @@ const userProvidedConfig = {
                  await runTransaction(db, async (transaction) => {
                     const lobbyDoc = await transaction.get(lobbyRef);
                     if (!lobbyDoc.exists()) return;
-                    
                     let lobbyData = lobbyDoc.data();
-                    
                     if (lobbyData.hostId === user.uid) {
                         transaction.delete(lobbyRef);
                     } else { 
@@ -591,9 +555,7 @@ const userProvidedConfig = {
                         transaction.update(lobbyRef, { players: updatedPlayers });
                     }
                 });
-            } catch (error) {
-                console.error("Error leaving lobby:", error);
-            }
+            } catch (error) { console.error("Error leaving lobby:", error); }
             
             resetToMainMenu();
         });
@@ -607,11 +569,7 @@ const userProvidedConfig = {
                 const newPlayerId = state.players.length;
                 const defaultColor = colorKeys[newPlayerId % colorKeys.length];
                 const cpuPlayer = {
-                    uid: `cpu-${newPlayerId}-${Date.now()}`,
-                    id: newPlayerId,
-                    name: `CPU ${i + 1}`,
-                    color: defaultColor,
-                    type: 'cpu',
+                    uid: `cpu-${newPlayerId}-${Date.now()}`, id: newPlayerId, name: `CPU ${i + 1}`, color: defaultColor, type: 'cpu',
                     position: 1, lap: 1, skippedTurns: 0, isEliminated: false, team: null, gems: []
                 };
                 state.players.push(cpuPlayer);
@@ -622,8 +580,23 @@ const userProvidedConfig = {
             await updateDoc(lobbyRef, { status: 'in-progress', players: state.players });
         });
 
+        async function handleHostLogic(newState) {
+            const isHost = auth.currentUser && auth.currentUser.uid === newState.hostId;
+            if (!isHost) return;
+
+            const player = newState.players[newState.currentPlayerIndex];
+            if (newState.lastRoll && newState.lastRoll.uid === player.uid) {
+                const { d1, d2 } = newState.lastRoll;
+                await handleMoveSequence(player, d1 + d2, false);
+            }
+            else if (player.type === 'cpu' && !newState.isMoving && newState.status === 'in-progress') {
+                await playTurn();
+            }
+        }
+        
         function listenToLobby(lobbyId) {
             const lobbyRef = doc(db, `artifacts/${appId}/public/data/lobbies/${lobbyId}`);
+            let isFirstSnapshot = true;
             lobbyUnsubscribe = onSnapshot(lobbyRef, (doc) => {
                 if (!doc.exists()) {
                     alert("La lobby è stata chiusa dall'host.");
@@ -632,20 +605,82 @@ const userProvidedConfig = {
                     return;
                 }
 
-                const lobbyData = doc.data();
-                state = lobbyData; 
+                const oldState = state;
+                state = doc.data(); 
                 
                 if (state.status === 'waiting') {
                     renderLobbyScreen();
                 } else if (state.status === 'in-progress' || state.status === 'finished') {
-                    lobbyScreen.classList.add('hidden');
-                    showGameScreen();
+                    if (isFirstSnapshot) {
+                        lobbyScreen.classList.add('hidden');
+                        showGameScreen();
+                        isFirstSnapshot = false;
+                    }
+                    updateGameUI(oldState, state);
                     if (state.isGameOver) {
                          showPodium();
                     }
                 }
+                handleHostLogic(state);
             });
         }
+
+        function updateGameUI(oldState, newState) {
+            if (JSON.stringify(oldState.players) !== JSON.stringify(newState.players)) {
+                clearTimeout(localPlayerAnimationTimeout);
+                animatePlayerMoves(oldState.players, newState.players);
+                updateLeaderboard();
+                if (state.gameMode === 'gem') updateInventoryBar();
+            }
+            if (oldState.currentPlayerIndex !== newState.currentPlayerIndex || oldState.isMoving !== newState.isMoving) {
+                updateTurnIndicator();
+                updateTurnOrderIndicator();
+            }
+            if(newState.diceResult[0] !== 0) {
+                dice1El.textContent = newState.diceResult[0];
+                dice2El.textContent = newState.diceResult[1];
+            }
+        }
+
+        async function animatePlayerMoves(oldPlayers, newPlayers) {
+            const moves = [];
+            for(const newPlayer of newPlayers) {
+                const oldPlayer = oldPlayers.find(p => p.id === newPlayer.id);
+                if (oldPlayer && oldPlayer.position !== newPlayer.position) {
+                    moves.push({ player: newPlayer, from: oldPlayer.position, to: newPlayer.position });
+                }
+            }
+            
+            renderPlayersOnBoard(); // Initially render at the final position
+            
+            for(const move of moves) {
+                const pawnEl = document.getElementById(`pawn-${move.player.id}`);
+                if (!pawnEl) continue;
+                
+                const path = [];
+                const direction = move.to > move.from ? 1 : -1;
+                if (Math.abs(move.to - move.from) > state.totalTiles / 2) { // Lap change
+                    for(let i = move.from; i !== move.to + direction; i += direction) {
+                         let pos = i;
+                         if (pos > state.totalTiles) pos = 1;
+                         if (pos < 1) pos = state.totalTiles;
+                         path.push(pos);
+                         if (pos === move.to) break;
+                    }
+                } else {
+                    for(let i = move.from; i !== move.to + direction; i += direction) {
+                        path.push(i);
+                    }
+                }
+
+                for (const pos of path) {
+                    const tileEl = document.getElementById(`tile-${pos}`);
+                    if(tileEl) tileEl.appendChild(pawnEl);
+                    await sleep(100);
+                }
+            }
+        }
+
 
         function renderLobbyScreen() {
             const user = auth.currentUser;
@@ -657,10 +692,7 @@ const userProvidedConfig = {
             state.players.forEach(player => {
                 const playerCard = document.createElement('div');
                 playerCard.className = 'p-4 bg-gray-200 rounded-lg flex items-center gap-4';
-                playerCard.innerHTML = `
-                    <div class="w-8 h-8 rounded-full ${colorClasses[player.color]}"></div>
-                    <div class="font-bold flex-grow">${player.name} ${player.uid === state.hostId ? '(Host)' : ''}</div>
-                `;
+                playerCard.innerHTML = `<div class="w-8 h-8 rounded-full ${colorClasses[player.color]}"></div><div class="font-bold flex-grow">${player.name} ${player.uid === state.hostId ? '(Host)' : ''}</div>`;
                 lobbyPlayerList.appendChild(playerCard);
             });
 
@@ -671,19 +703,11 @@ const userProvidedConfig = {
             if (isHost) {
                 hostControls.innerHTML = `
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label for="online-game-mode" class="block font-bold mb-1">Modalità:</label>
-                            <select id="online-game-mode" class="w-full p-2 border rounded-lg">${gameModeSelect.innerHTML}</select>
-                        </div>
-                        <div>
-                            <label for="online-cpu-count" class="block font-bold mb-1">Giocatori CPU:</label>
-                            <input type="number" id="online-cpu-count" class="w-full p-2 border rounded-lg" value="0" min="0" max="6">
-                        </div>
+                        <div><label for="online-game-mode" class="block font-bold mb-1">Modalità:</label><select id="online-game-mode" class="w-full p-2 border rounded-lg">${gameModeSelect.innerHTML}</select></div>
+                        <div><label for="online-cpu-count" class="block font-bold mb-1">Giocatori CPU:</label><input type="number" id="online-cpu-count" class="w-full p-2 border rounded-lg" value="0" min="0" max="6"></div>
                     </div>`;
                 document.getElementById('online-game-mode').value = state.gameMode;
-                document.getElementById('online-game-mode').addEventListener('change', (e) => {
-                    updateLobbySettings({ gameMode: e.target.value });
-                });
+                document.getElementById('online-game-mode').addEventListener('change', (e) => updateLobbySettings({ gameMode: e.target.value }));
             }
 
             const self = state.players.find(p => p.uid === user.uid);
@@ -721,29 +745,18 @@ const userProvidedConfig = {
                         transaction.update(lobbyRef, { players: lobbyData.players });
                     }
                 });
-            } catch(error) {
-                console.error("Failed to update player:", error);
-            }
+            } catch(error) { console.error("Failed to update player:", error); }
         }
         
-        function generateLobbyCode() {
-            return Math.random().toString(36).substring(2, 8).toUpperCase();
-        }
+        function generateLobbyCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
 
         function resetToMainMenu() {
             if (lobbyUnsubscribe) lobbyUnsubscribe();
             lobbyUnsubscribe = null;
             currentLobbyId = null;
             isOnlineGame = false;
-
-            gameScreen.classList.add('hidden');
-            lobbyScreen.classList.add('hidden');
-            onlineMenu.classList.add('hidden');
-            mainMenu.classList.remove('hidden');
             location.reload(); 
         }
-
-        // --- GAME LOGIC (ADAPTED FOR ONLINE/OFFLINE) ---
 
         function showGameScreen() {
             if (state.gameMode === 'elimination') { eliminationCounterEl.classList.remove('hidden'); graveyardEl.style.display = 'flex'; updateEliminationCounter(); }
@@ -779,16 +792,13 @@ const userProvidedConfig = {
         function defineSpecialTiles() {
             state.specialTiles = {}; state.gemLocations = {};
             const max = state.totalTiles;
-            
             let forbiddenTiles = [1, max]; 
             let masterPool = [];
 
             if (state.gameMode === 'gem') {
                 const gemsForThisGame = gemList.slice(0, state.gemsToCollect);
                 for(let i=2; i<max; i++) masterPool.push(i);
-                
                 for (let i = masterPool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [masterPool[i], masterPool[j]] = [masterPool[j], masterPool[i]]; }
-
                 gemsForThisGame.forEach(gem => {
                     for(let i = 0; i < 2; i++) { 
                         const tileNum = masterPool.pop();
@@ -804,19 +814,15 @@ const userProvidedConfig = {
                 forbiddenTiles.push(6, 8, 12, 22, 39);
                 for (let i = 2; i < max; i++) { if (!forbiddenTiles.includes(i)) { masterPool.push(i); } }
                 const tileCounts = { 'goose': 9, 'prison': 4, 'lose turns': 5, 'swap': 2, 'swap random': 2, 'forward 3': 5, 'forward 2': 2 };
-                if (state.gameMode !== 'elimination') {
-                    tileCounts['well'] = 2;
-                }
+                if (state.gameMode !== 'elimination') { tileCounts['well'] = 2; }
                 let mazePool = masterPool.filter(t => t >= 50 && t <= 60);
                 for (let i = 0; i < 2; i++) { if (mazePool.length === 0) break; const mazeIndex = Math.floor(Math.random() * mazePool.length); const tileNum = mazePool.splice(mazeIndex, 1)[0]; state.specialTiles[tileNum] = { type: 'maze' }; masterPool = masterPool.filter(t => t !== tileNum); }
                 const placeConstrained = (type, count, minPos) => { let pool = masterPool.filter(t => t >= minPos); for (let i = 0; i < count; i++) { if (pool.length === 0) break; const index = Math.floor(Math.random() * pool.length); const tileNum = pool.splice(index, 1)[0]; state.specialTiles[tileNum] = { type: type }; masterPool = masterPool.filter(t => t !== tileNum); } };
                 placeConstrained('death', 3, 11); placeConstrained('backward 3', 5, 5); placeConstrained('backward 2', 2, 3);
                 for (const type in tileCounts) { for (let i = 0; i < tileCounts[type]; i++) { if (masterPool.length === 0) break; const index = Math.floor(Math.random() * masterPool.length); const tileNum = masterPool.splice(index, 1)[0]; state.specialTiles[tileNum] = { type }; } }
             }
-
             if (state.gameMode !== 'elimination') { state.specialTiles[max] = { type: 'finish' }; }
         }
-
 
         function renderPlayersOnBoard() {
             document.querySelectorAll('.player-pawn').forEach(p => p.remove());
@@ -864,10 +870,6 @@ const userProvidedConfig = {
 
             diceContainer.classList.toggle('pointer-events-none', !canPlay || state.isMoving);
             diceContainer.classList.toggle('opacity-50', !canPlay || state.isMoving);
-
-            if (isOnlineGame && auth.currentUser.uid === state.hostId && player.type === 'cpu' && !state.isMoving) {
-                setTimeout(playTurn, 1500);
-            }
         }
         
         function currentPlayer() { return state.players[state.currentPlayerIndex]; }
@@ -882,12 +884,9 @@ const userProvidedConfig = {
             turnOrderIndicator.innerHTML = '';
             const activePlayers = state.players.filter(p => !p.isEliminated);
             if (activePlayers.length < 2) return;
-            
             const player = currentPlayer();
             if (!player) return;
-            const currentPlayerId = player.id;
-
-            const currentIdx = activePlayers.findIndex(p => p.id === currentPlayerId);
+            const currentIdx = activePlayers.findIndex(p => p.id === player.id);
             if (currentIdx === -1) return;
 
             for (let i = 0; i < Math.min(activePlayers.length, 5); i++) {
@@ -910,9 +909,7 @@ const userProvidedConfig = {
                 const name = `<div class="text-white font-bold text-sm">${player.name}</div>`;
                 let gemsHTML = '';
                 const gemsForThisGame = gemList.slice(0, state.gemsToCollect);
-                gemsForThisGame.forEach(gem => {
-                    gemsHTML += `<div id="gem-${player.id}-${gem.id}" class="gem-slot" title="${gem.name}">${gem.icon}</div>`;
-                });
+                gemsForThisGame.forEach(gem => { gemsHTML += `<div id="gem-${player.id}-${gem.id}" class="gem-slot" title="${gem.name}">${gem.icon}</div>`; });
                 inventoryDiv.innerHTML = `${pawn}${name}<div class="flex gap-1">${gemsHTML}</div>`;
                 inventoryBar.appendChild(inventoryDiv);
             });
@@ -923,10 +920,7 @@ const userProvidedConfig = {
                 const gemsForThisGame = gemList.slice(0, state.gemsToCollect);
                 gemsForThisGame.forEach(gem => {
                     const slot = document.getElementById(`gem-${player.id}-${gem.id}`);
-                    if (slot) {
-                        const hasGem = player.gems.includes(gem.id);
-                        slot.classList.toggle('collected', hasGem);
-                    }
+                    if (slot) { slot.classList.toggle('collected', player.gems.includes(gem.id)); }
                 });
             });
         }
@@ -953,25 +947,21 @@ const userProvidedConfig = {
             
             const player = currentPlayer();
             if (player.skippedTurns > 0) { 
-                player.skippedTurns--; 
                 if (!isOnlineGame || auth.currentUser.uid === state.hostId) {
+                    player.skippedTurns--; 
                     await sleep(1000); 
                     nextTurn(); 
                 }
                 return; 
             }
             
-            state.isMoving = true;
-            if (!isOnlineGame || auth.currentUser.uid === state.hostId) {
-                 await updateLobbySettings({ isMoving: true });
-            }
-
-            updateTurnIndicator();
             const [d1, d2] = await rollDice();
-            const rollTotal = d1 + d2;
-
-            if (!isOnlineGame || auth.currentUser.uid === state.hostId) {
-                await handleMoveSequence(player, rollTotal, false);
+            
+            if (isOnlineGame) {
+                await updateLobbySettings({ lastRoll: { uid: player.uid, d1, d2 }, diceResult: [d1,d2], isMoving: true });
+            } else {
+                state.isMoving = true;
+                await handleMoveSequence(player, d1 + d2, false);
             }
         }
         
@@ -985,38 +975,23 @@ const userProvidedConfig = {
         }
         
         async function handleMoveSequence(player, steps, fromSpecial) {
-            if (steps !== 0) {
-                const pawnEl = document.getElementById(`pawn-${player.id}`);
-                if (pawnEl) {
-                    const direction = steps > 0 ? 1 : -1;
-                    for (let i = 0; i < Math.abs(steps); i++) {
-                        let currentPos = player.position + direction;
-                        if (state.gameMode === 'elimination' || state.gameMode === 'gem') {
-                            if (currentPos > state.totalTiles) { player.lap++; currentPos = 1; }
-                            if (currentPos < 1) { player.lap = Math.max(1, player.lap - 1); currentPos = state.totalTiles; }
-                        } else {
-                            if (currentPos > state.totalTiles) { currentPos = state.totalTiles - (currentPos - state.totalTiles); }
-                            if (currentPos < 1) { currentPos = 1; }
-                        }
-                        player.position = currentPos;
-                        const tileEl = document.getElementById(`tile-${player.position}`);
-                        if (tileEl) tileEl.appendChild(pawnEl);
-                        if (isOnlineGame) await updateLobbySettings({ players: state.players });
-                        await sleep(150);
-                    }
+            let currentPos = player.position;
+            const direction = steps > 0 ? 1 : -1;
+            for (let i = 0; i < Math.abs(steps); i++) {
+                currentPos += direction;
+                if (state.gameMode === 'elimination' || state.gameMode === 'gem') {
+                    if (currentPos > state.totalTiles) { player.lap++; currentPos = 1; }
+                    if (currentPos < 1) { player.lap = Math.max(1, player.lap - 1); currentPos = state.totalTiles; }
+                } else {
+                    if (currentPos > state.totalTiles) { currentPos = state.totalTiles - (currentPos - state.totalTiles); }
+                    if (currentPos < 1) { currentPos = 1; }
                 }
             }
-            if (!isOnlineGame) updateLeaderboard();
+            player.position = currentPos;
+
+            if (checkGameOver()) { return; }
             
-            if (checkGameOver()) {
-                if(isOnlineGame) await updateLobbySettings({ isGameOver: true, status: 'finished' });
-                return;
-            }
-            
-            if (fromSpecial) {
-                nextTurn();
-                return;
-            }
+            if (fromSpecial) { nextTurn(); return; }
         
             const special = state.specialTiles[player.position];
             if (special) {
@@ -1029,52 +1004,38 @@ const userProvidedConfig = {
                     case 'forward 2': await handleMoveSequence(player, 2, true); break;
                     case 'backward 2': await handleMoveSequence(player, -2, true); break;
                     case 'death': await handleMoveSequence(player, -10, true); break;
-                    case 'ponte': player.position = 12; renderPlayersOnBoard(); await handleMoveSequence(player, 0, true); break;
-                    case 'torre': player.position = 22; renderPlayersOnBoard(); await handleMoveSequence(player, 0, true); break;
-                    case 'maze': player.position = 39; renderPlayersOnBoard(); await handleMoveSequence(player, 0, true); break;
+                    case 'ponte': player.position = 12; await handleMoveSequence(player, 0, true); break;
+                    case 'torre': player.position = 22; await handleMoveSequence(player, 0, true); break;
+                    case 'maze': player.position = 39; await handleMoveSequence(player, 0, true); break;
                     case 'lose turns': player.skippedTurns = state.gameMode === 'elimination' ? 1 : 2; nextTurn(); break;
                     case 'prison': player.skippedTurns = state.gameMode === 'elimination' ? 1 : 3; nextTurn(); break;
                     case 'well': player.skippedTurns = 99; const wellPlayers = state.players.filter(p => p.skippedTurns === 99 && p.id !== player.id); if(wellPlayers.length > 0) wellPlayers.forEach(p => p.skippedTurns = 0); nextTurn(); break;
                     case 'swap':
                         const leadPlayer = state.players.filter(p => !p.isEliminated).sort((a,b) => (b.lap - a.lap) || (b.position - a.position))[0];
                         if (leadPlayer && leadPlayer.id !== player.id) { [player.position, leadPlayer.position] = [leadPlayer.position, player.position]; [player.lap, leadPlayer.lap] = [leadPlayer.lap, player.lap]; }
-                        renderPlayersOnBoard(); nextTurn(); break;
+                        nextTurn(); break;
                     case 'swap random':
                         const otherPlayers = state.players.filter(p => !p.isEliminated && p.id !== player.id);
                         if (otherPlayers.length > 0) { const randomOpponent = otherPlayers[Math.floor(Math.random() * otherPlayers.length)]; [player.position, randomOpponent.position] = [randomOpponent.position, player.position]; [player.lap, randomOpponent.lap] = [randomOpponent.lap, player.lap]; }
-                        renderPlayersOnBoard(); nextTurn(); break;
+                        nextTurn(); break;
                     case 'roll again':
-                        state.isMoving = false;
-                        if(isOnlineGame) await updateLobbySettings({ isMoving: false, players: state.players });
-                        updateTurnIndicator();
-                        if (currentPlayer().type === 'cpu' && (!isOnlineGame || auth.currentUser.uid === state.hostId)) setTimeout(playTurn, 1000);
+                        if (isOnlineGame) { await updateLobbySettings({ players: state.players, lastRoll: null, isMoving: false }); }
+                        else { state.isMoving = false; updateTurnIndicator(); }
                         break;
                     case 'gem':
-                        if (!player.gems.includes(special.gem.id)) {
-                            player.gems.push(special.gem.id);
-                            const gemSlot = document.getElementById(`gem-${player.id}-${special.gem.id}`);
-                            if (gemSlot) { gemSlot.classList.add('collected', 'bling'); setTimeout(() => gemSlot.classList.remove('bling'), 700); }
-                            if (!isOnlineGame) updateInventoryBar();
-                        }
+                        if (!player.gems.includes(special.gem.id)) { player.gems.push(special.gem.id); }
                         nextTurn(); break;
                     case 'gem-thief':
-                        if(player.gems.length > 0) {
-                            const stolenGemIndex = Math.floor(Math.random() * player.gems.length);
-                            player.gems.splice(stolenGemIndex, 1);
-                            if (!isOnlineGame) updateInventoryBar();
-                        }
+                        if(player.gems.length > 0) { player.gems.splice(Math.floor(Math.random() * player.gems.length), 1); }
                         nextTurn(); break;
                     case 'gem-swap':
                         const opponentsWithGems = state.players.filter(p => p.id !== player.id && !p.isEliminated && p.gems.length > 0);
                         if(player.gems.length > 0 && opponentsWithGems.length > 0) {
                             const opponent = opponentsWithGems[Math.floor(Math.random() * opponentsWithGems.length)];
-                            const playerGemIndex = Math.floor(Math.random() * player.gems.length);
-                            const opponentGemIndex = Math.floor(Math.random() * opponent.gems.length);
-                            const playerGem = player.gems[playerGemIndex];
-                            const opponentGem = opponent.gems[opponentGemIndex];
-                            player.gems[playerGemIndex] = opponentGem;
-                            opponent.gems[opponentGemIndex] = playerGem;
-                            if (!isOnlineGame) updateInventoryBar();
+                            const playerGem = player.gems.splice(Math.floor(Math.random() * player.gems.length), 1)[0];
+                            const opponentGem = opponent.gems.splice(Math.floor(Math.random() * opponent.gems.length), 1)[0];
+                            player.gems.push(opponentGem);
+                            opponent.gems.push(playerGem);
                         }
                         nextTurn(); break;
                      case 'gem-choice':
@@ -1091,35 +1052,21 @@ const userProvidedConfig = {
             const lastPlayerId = currentPlayer().id;
             const activePlayers = state.players.filter(p => !p.isEliminated);
             const lastActivePlayerInListId = activePlayers.length > 0 ? activePlayers[activePlayers.length - 1].id : -1;
-            let triggerEliminationCheck = false;
-
+            
             if (state.gameMode === 'elimination' && lastPlayerId === lastActivePlayerInListId) {
                 state.gameRounds++;
                 if (state.gameRounds > 0 && state.gameRounds % state.eliminationTurns === 0) {
-                    triggerEliminationCheck = true;
-                }
-            }
-            
-            if (triggerEliminationCheck) {
-                eliminatePlayer();
-                if(checkGameOver()) {
-                    if(isOnlineGame) updateLobbySettings({ isGameOver: true, status: 'finished', players: state.players });
-                    return;
+                    eliminatePlayer();
+                    if(checkGameOver()) return;
                 }
             }
 
             do { state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length; } while (currentPlayer().isEliminated);
 
-            state.isMoving = false;
-            
             if (isOnlineGame) {
-                updateLobbySettings({ 
-                    players: state.players, 
-                    currentPlayerIndex: state.currentPlayerIndex, 
-                    gameRounds: state.gameRounds,
-                    isMoving: false 
-                });
+                updateLobbySettings({ players: state.players, currentPlayerIndex: state.currentPlayerIndex, gameRounds: state.gameRounds, isMoving: false, lastRoll: null });
             } else {
+                 state.isMoving = false;
                  updateTurnIndicator();
                  updateTurnOrderIndicator();
                  if (state.gameMode === 'elimination') updateEliminationCounter();
@@ -1136,13 +1083,10 @@ const userProvidedConfig = {
             eliminationMessageEl.textContent = `${playerToEliminate.name} è stato eliminato!`;
             eliminationMessageEl.style.display = 'block';
             setTimeout(() => { eliminationMessageEl.style.display = 'none'; }, 3000);
-            const pawn = document.getElementById(`pawn-${playerToEliminate.id}`);
-            if (pawn) pawn.remove();
             const graveyardPawn = document.createElement('div');
             graveyardPawn.className = `graveyard-pawn ${colorClasses[playerToEliminate.color]}`;
             graveyardPawn.title = playerToEliminate.name;
             graveyardEl.appendChild(graveyardPawn);
-            if(!isOnlineGame) updateLeaderboard();
         }
 
         function showGemChoiceModal(player) {
@@ -1160,7 +1104,6 @@ const userProvidedConfig = {
                     gemDiv.innerHTML = `<span class="text-3xl">${gem.icon}</span><span class="font-bold">${gem.name}</span>`;
                     gemDiv.onclick = () => {
                         player.gems.push(gem.id);
-                        if (!isOnlineGame) updateInventoryBar();
                         gemChoiceModal.style.display = 'none';
                         nextTurn();
                     };
@@ -1184,7 +1127,6 @@ const userProvidedConfig = {
                          const closestMissingGemTile = Math.min(...missingGems.map(gem => state.gemLocations[gem.id]));
                          showTileExplanation('finish', 'ma ti mancano delle gemme! Torna indietro!');
                          playerAtEnd.position = closestMissingGemTile;
-                         renderPlayersOnBoard();
                      }
                  }
             }
@@ -1198,6 +1140,7 @@ const userProvidedConfig = {
             } else { winner = state.players.find(p => p.position >= state.totalTiles); }
             if (winner) {
                 state.isGameOver = true;
+                if(isOnlineGame) updateLobbySettings({ isGameOver: true, status: 'finished', players: state.players });
                 showPodium();
                 return true;
             }
