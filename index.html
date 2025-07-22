@@ -353,14 +353,10 @@
         
         async function initializeFirebase() {
             const userProvidedConfig = {
-    apiKey: "AIzaSyCylKpsbhvkOppxJoInXrP81gC2DOqq2Ao",
-    authDomain: "total-drama-judge.firebaseapp.com",
-    projectId: "total-drama-judge",
-    storageBucket: "total-drama-judge.firebasestorage.app",
-    messagingSenderId: "807046352867",
-    appId: "1:807046352867:web:a1c1849ad7b3cd19481ad6",
-    measurementId: "G-0BR32MRK92"
-};
+                // apiKey: "...",
+                // authDomain: "...",
+                // projectId: "...",
+            };
 
             const firebaseConfig = typeof __firebase_config !== 'undefined' 
                 ? JSON.parse(__firebase_config) 
@@ -584,23 +580,38 @@
             await updateDoc(lobbyRef, { status: 'in-progress', players: state.players });
         });
 
-        async function handleHostLogic(newState) {
+        async function runHostLogic(oldState, newState) {
             const isHost = auth.currentUser && auth.currentUser.uid === newState.hostId;
-            if (!isHost) return;
-
+            if (!isHost || newState.isMoving) return;
+        
             const player = newState.players[newState.currentPlayerIndex];
-            if (newState.lastRoll && newState.lastRoll.uid === player.uid) {
-                const { d1, d2 } = newState.lastRoll;
-                await handleMoveSequence(player, d1 + d2, false);
+        
+            // 1. A player has made a move
+            if (newState.lastRoll && (!oldState.lastRoll || oldState.lastRoll.timestamp !== newState.lastRoll.timestamp)) {
+                if (newState.lastRoll.uid === player.uid) {
+                    await handleMoveSequence(player, newState.lastRoll.d1 + newState.lastRoll.d2, false);
+                }
+                return; 
             }
-            else if (player.type === 'cpu' && !newState.isMoving && newState.status === 'in-progress') {
-                await playTurn();
+        
+            // 2. It's a new turn, check for skips or CPU
+            if (oldState.currentPlayerIndex !== newState.currentPlayerIndex || (oldState.status === 'waiting' && newState.status === 'in-progress')) {
+                 if (player.skippedTurns > 0) {
+                    await sleep(1500); // Wait to show the player is skipped
+                    player.skippedTurns--;
+                    nextTurn();
+                } else if (player.type === 'cpu') {
+                    await sleep(1500); // Wait before CPU rolls
+                    await playTurn();
+                }
             }
         }
         
         function listenToLobby(lobbyId) {
             const lobbyRef = doc(db, `artifacts/${appId}/public/data/lobbies/${lobbyId}`);
             let isFirstSnapshot = true;
+            let localOldState = {};
+
             lobbyUnsubscribe = onSnapshot(lobbyRef, (doc) => {
                 if (!doc.exists()) {
                     alert("La lobby è stata chiusa dall'host.");
@@ -608,31 +619,32 @@
                     resetToMainMenu();
                     return;
                 }
-
-                const oldState = state;
-                state = doc.data(); 
                 
-                if (state.status === 'waiting') {
+                const newState = doc.data(); 
+                
+                if (newState.status === 'waiting') {
                     renderLobbyScreen();
-                } else if (state.status === 'in-progress' || state.status === 'finished') {
+                } else if (newState.status === 'in-progress' || newState.status === 'finished') {
                     if (isFirstSnapshot) {
                         lobbyScreen.classList.add('hidden');
                         showGameScreen();
                         isFirstSnapshot = false;
                     }
-                    updateGameUI(oldState, state);
-                    if (state.isGameOver) {
+                    updateGameUI(state, newState); // Use previous global state for UI diff
+                    if (newState.isGameOver) {
                          showPodium();
                     }
                 }
-                handleHostLogic(state);
+                
+                const stateForLogic = JSON.parse(JSON.stringify(state)); // Deep copy for logic comparison
+                state = newState; // Update global state
+                runHostLogic(stateForLogic, newState);
             });
         }
 
         function updateGameUI(oldState, newState) {
             if (JSON.stringify(oldState.players) !== JSON.stringify(newState.players)) {
-                clearTimeout(localPlayerAnimationTimeout);
-                animatePlayerMoves(oldState.players, newState.players);
+                renderPlayersOnBoard();
                 updateLeaderboard();
                 if (state.gameMode === 'gem') updateInventoryBar();
             }
@@ -640,51 +652,11 @@
                 updateTurnIndicator();
                 updateTurnOrderIndicator();
             }
-            if(newState.diceResult[0] !== 0) {
+            if(newState.diceResult && newState.diceResult[0] !== 0) {
                 dice1El.textContent = newState.diceResult[0];
                 dice2El.textContent = newState.diceResult[1];
             }
         }
-
-        async function animatePlayerMoves(oldPlayers, newPlayers) {
-            const moves = [];
-            for(const newPlayer of newPlayers) {
-                const oldPlayer = oldPlayers.find(p => p.id === newPlayer.id);
-                if (oldPlayer && oldPlayer.position !== newPlayer.position) {
-                    moves.push({ player: newPlayer, from: oldPlayer.position, to: newPlayer.position });
-                }
-            }
-            
-            renderPlayersOnBoard(); // Initially render at the final position
-            
-            for(const move of moves) {
-                const pawnEl = document.getElementById(`pawn-${move.player.id}`);
-                if (!pawnEl) continue;
-                
-                const path = [];
-                const direction = move.to > move.from ? 1 : -1;
-                if (Math.abs(move.to - move.from) > state.totalTiles / 2) { // Lap change
-                    for(let i = move.from; i !== move.to + direction; i += direction) {
-                         let pos = i;
-                         if (pos > state.totalTiles) pos = 1;
-                         if (pos < 1) pos = state.totalTiles;
-                         path.push(pos);
-                         if (pos === move.to) break;
-                    }
-                } else {
-                    for(let i = move.from; i !== move.to + direction; i += direction) {
-                        path.push(i);
-                    }
-                }
-
-                for (const pos of path) {
-                    const tileEl = document.getElementById(`tile-${pos}`);
-                    if(tileEl) tileEl.appendChild(pawnEl);
-                    await sleep(100);
-                }
-            }
-        }
-
 
         function renderLobbyScreen() {
             const user = auth.currentUser;
@@ -962,7 +934,7 @@
             const [d1, d2] = await rollDice();
             
             if (isOnlineGame) {
-                await updateLobbySettings({ lastRoll: { uid: player.uid, d1, d2 }, diceResult: [d1,d2], isMoving: true });
+                await updateLobbySettings({ lastRoll: { uid: player.uid, d1, d2, timestamp: Date.now() }, diceResult: [d1,d2], isMoving: true });
             } else {
                 state.isMoving = true;
                 await handleMoveSequence(player, d1 + d2, false);
@@ -1250,3 +1222,75 @@
     </script>
 </body>
 </html>
+" and the user query is "ma che dici non riesco a trovare questo // >>>>> INIZIO SEZIONE DA MODIFICARE <<<<<
+// Se stai eseguendo il gioco al di fuori di questo ambiente (es. su GitHub),
+// incolla qui il tuo oggetto di configurazione Firebase.
+const userProvidedConfig = {
+    // Esempio:
+    // apiKey: "AIzaSy...",
+    // authDomain: "tuo-progetto.firebaseapp.com",
+    // ...
+};
+// >>>>> FINE SEZIONE DA MODIFICARE <<<<<".
+The user is having trouble finding the `userProvidedConfig` section in the code.
+They are correct, looking at the provided code, the more detailed comments are missing. The code only contains:
+```javascript
+        async function initializeFirebase() {
+            const userProvidedConfig = {
+                // apiKey: "...",
+                // authDomain: "...",
+                // projectId: "...",
+            };
+```
+The user is confused because my previous explanation mentioned more detailed comments that aren't there.
+
+My goal is to help the user find the correct spot and understand what to do, even if the comments are slightly different from my previous description.
+
+1.  **Acknowledge the user's point:** The user is right. The detailed comments I mentioned aren't exactly there in the current version of the code. I should apologize for the confusion.
+2.  **Confirm they found the right place:** The code block they found (`const userProvidedConfig = { ... };`) is indeed the correct location. I need to reassure them of this.
+3.  **Provide clear, actionable instructions:** I will reiterate exactly what they need to do with the code block they found. I will show a "before" and "after" example to make it crystal clear, just like last time.
+4.  **Keep it simple and direct:** Avoid technical jargon. The user is frustrated, so a clear, simple, and apologetic tone is best.
+
+The query is a simple clarification/Q&A. It does not require editing the document. I will respond in the chat UI.Hai perfettamente ragione, ti chiedo scusa!
+
+Guardando il codice che hai incollato, vedo che i commenti dettagliati che ti avevo descritto non ci sono, c'è solo la versione più semplice. La colpa è mia per la confusione.
+
+**Hai trovato il punto esatto!** La sezione che hai trovato è quella giusta:
+
+```javascript
+async function initializeFirebase() {
+    const userProvidedConfig = {
+        // apiKey: "...",
+        // authDomain: "...",
+        // projectId: "...",
+    };
+```
+
+Devi semplicemente **sostituire** quel blocco di codice con le tue credenziali.
+
+**PRIMA (come lo vedi ora):**
+```javascript
+const userProvidedConfig = {
+    apiKey: "AIzaSyCylKpsbhvkOppxJoInXrP81gC2DOqq2Ao",
+    authDomain: "total-drama-judge.firebaseapp.com",
+    projectId: "total-drama-judge",
+    storageBucket: "total-drama-judge.firebasestorage.app",
+    messagingSenderId: "807046352867",
+    appId: "1:807046352867:web:a1c1849ad7b3cd19481ad6",
+    measurementId: "G-0BR32MRK92"
+};```
+
+**DOPO (come deve essere dopo che incolli le tue credenziali):**
+```javascript
+const userProvidedConfig = {
+    apiKey: "AIzaSyCylKpsbhvkOppxJoInXrP81gC2DOqq2Ao",
+    authDomain: "total-drama-judge.firebaseapp.com",
+    projectId: "total-drama-judge",
+    storageBucket: "total-drama-judge.firebasestorage.app",
+    messagingSenderId: "807046352867",
+    appId: "1:807046352867:web:a1c1849ad7b3cd19481ad6",
+    measurementId: "G-0BR32MRK92"
+};
+```
+
+Scusa ancora per l'imprecisione di prima. Hai trovato il posto corret
