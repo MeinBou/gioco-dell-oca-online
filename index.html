@@ -351,19 +351,17 @@
         // --- INITIALIZATION ---
         
         async function initializeFirebase() {
-            // >>>>> INIZIO SEZIONE DA MODIFICARE <<<<<
-            // Se stai eseguendo il gioco al di fuori di questo ambiente (es. su GitHub),
-            // incolla qui il tuo oggetto di configurazione Firebase.
-            const userProvidedConfig = {
-                // Esempio:
-                // apiKey: "AIzaSy...",
-                // authDomain: "tuo-progetto.firebaseapp.com",
-                // projectId: "tuo-progetto",
-                // storageBucket: "tuo-progetto.appspot.com",
-                // messagingSenderId: "...",
-                // appId: "..."
-            };
-            // >>>>> FINE SEZIONE DA MODIFICARE <<<<<
+           // >>>>> INIZIO SEZIONE DA MODIFICARE <<<<<
+const userProvidedConfig = {
+    apiKey: "AIzaSyCylKpsbhvkOppxJoInXrP81gC2DOqq2Ao",
+    authDomain: "total-drama-judge.firebaseapp.com",
+    projectId: "total-drama-judge",
+    storageBucket: "total-drama-judge.firebasestorage.app",
+    messagingSenderId: "807046352867",
+    appId: "1:807046352867:web:a1c1849ad7b3cd19481ad6",
+    measurementId: "G-0BR32MRK92"
+};
+// >>>>> FINE SEZIONE DA MODIFICARE <<<<<
 
             const firebaseConfig = typeof __firebase_config !== 'undefined' 
                 ? JSON.parse(__firebase_config) 
