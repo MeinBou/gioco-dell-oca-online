@@ -351,7 +351,34 @@
         // --- INITIALIZATION ---
         
         async function initializeFirebase() {
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "...", authDomain: "...", projectId: "..." };
+            // >>>>> INIZIO SEZIONE DA MODIFICARE <<<<<
+            // Se stai eseguendo il gioco al di fuori di questo ambiente (es. su GitHub),
+            // incolla qui il tuo oggetto di configurazione Firebase.
+            const userProvidedConfig = {
+                // Esempio:
+                // apiKey: "AIzaSy...",
+                // authDomain: "tuo-progetto.firebaseapp.com",
+                // projectId: "tuo-progetto",
+                // storageBucket: "tuo-progetto.appspot.com",
+                // messagingSenderId: "...",
+                // appId: "..."
+            };
+            // >>>>> FINE SEZIONE DA MODIFICARE <<<<<
+
+            const firebaseConfig = typeof __firebase_config !== 'undefined' 
+                ? JSON.parse(__firebase_config) 
+                : userProvidedConfig;
+
+            if (!firebaseConfig.apiKey || firebaseConfig.apiKey.includes("...")) {
+                 document.body.innerHTML = `<div class="text-red-500 text-center p-8 text-xl bg-white rounded-lg shadow-md m-4">
+                    <h2 class="font-bold text-2xl mb-4">Errore di Configurazione</h2>
+                    <p>La configurazione di Firebase non è valida o non è stata trovata.</p>
+                    <p class="mt-2 text-base text-gray-600">Se stai eseguendo questo gioco al di fuori dell'ambiente di sviluppo originale (come su GitHub), devi incollare le tue credenziali Firebase nel file <code>index.html</code>.</p>
+                 </div>`;
+                 console.error("Configurazione Firebase non valida o mancante.");
+                 return false;
+            }
+
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
